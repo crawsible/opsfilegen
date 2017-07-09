@@ -14,40 +14,54 @@ type OpDefinition struct {
 
 var sourceMarkup = []byte(`
 ---
-consistent_value: "value"
+consistent_value:
+  nested_consistent_value: "value"
+  nested_removed_value: "value"
 removed_value: "value"
-another_removed_value: "new_value"
 `)
 
 var targetMarkup = []byte(`
 ---
-consistent_value: "value"
+consistent_value:
+  nested_consistent_value: "value"
 `)
 
 func main() {
-	var opDefs []OpDefinition
 	currentPath := "/"
 
-	var sourceRaw interface{}
-	var targetRaw interface{}
+	var source interface{}
+	var target interface{}
 
-	_ = yaml.Unmarshal(sourceMarkup, &sourceRaw)
-	_ = yaml.Unmarshal(targetMarkup, &targetRaw)
+	_ = yaml.Unmarshal(sourceMarkup, &source)
+	_ = yaml.Unmarshal(targetMarkup, &target)
 
-	switch source := sourceRaw.(type) {
+	opDefs := compareObjects(source, target, currentPath)
+
+	opsfile, _ := yaml.Marshal(opDefs)
+	fmt.Printf("%s", string(opsfile))
+}
+
+func compareObjects(source, target interface{}, currentPath string) (opDefs []OpDefinition) {
+	switch source := source.(type) {
 	case map[interface{}]interface{}:
-		target := targetRaw.(map[interface{}]interface{})
+		target := target.(map[interface{}]interface{})
 
-		for key, _ := range source {
+		for key, value := range source {
 			key := key.(string)
 			if target[key] == nil {
 				opDefs = append(opDefs, buildOpDefinition(currentPath, key))
+				continue
+			}
+
+			switch value := value.(type) {
+			case map[interface{}]interface{}:
+				newPath := currentPath + key + "/"
+				opDefs = append(opDefs, compareObjects(value, target[key], newPath)...)
 			}
 		}
 	}
 
-	opsfile, _ := yaml.Marshal(opDefs)
-	fmt.Printf("%s", string(opsfile))
+	return
 }
 
 func buildOpDefinition(location, key string) OpDefinition {
