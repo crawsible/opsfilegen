@@ -2,9 +2,16 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"gopkg.in/yaml.v2"
 )
+
+type Comparator struct {
+	Source interface{}
+	Target interface{}
+	Path   string
+}
 
 type OpDefinition struct {
 	Type  string
@@ -15,7 +22,13 @@ type OpDefinition struct {
 var sourceMarkup = []byte(`
 ---
 consistent_value:
-  nested_consistent_value: "value"
+  nested_consistent_value:
+  - name: "unchanged item"
+    key: "value"
+  - name: "changed item"
+    key: "value"
+  - name: "removed item"
+    key: "other value"
   nested_removed_value: "value"
 removed_value: "value"
 `)
@@ -23,45 +36,121 @@ removed_value: "value"
 var targetMarkup = []byte(`
 ---
 consistent_value:
-  nested_consistent_value: "value"
+  nested_consistent_value:
+  - name: "unchanged item"
+    key: "value"
+  - name: "changed item"
 `)
 
 func main() {
-	currentPath := "/"
+	c := Comparator{Path: "/"}
 
-	var source interface{}
-	var target interface{}
+	_ = yaml.Unmarshal(sourceMarkup, &c.Source)
+	_ = yaml.Unmarshal(targetMarkup, &c.Target)
 
-	_ = yaml.Unmarshal(sourceMarkup, &source)
-	_ = yaml.Unmarshal(targetMarkup, &target)
-
-	opDefs := compareObjects(source, target, currentPath)
+	opDefs := compareObjects(c)
 
 	opsfile, _ := yaml.Marshal(opDefs)
 	fmt.Printf("%s", string(opsfile))
 }
 
-func compareObjects(source, target interface{}, currentPath string) (opDefs []OpDefinition) {
-	switch source := source.(type) {
+func compareObjects(c Comparator) []OpDefinition {
+	switch source := c.Source.(type) {
 	case map[interface{}]interface{}:
-		target := target.(map[interface{}]interface{})
+		target, ok := c.Target.(map[interface{}]interface{})
+		if !ok {
+			fmt.Fprintf(os.Stderr, "Skipping path %s; replace not yet implemented\n", c.Path)
+			return []OpDefinition{}
+		}
 
-		for key, value := range source {
-			key := key.(string)
-			if target[key] == nil {
-				opDefs = append(opDefs, buildOpDefinition(currentPath, key))
-				continue
-			}
+		return compareMaps(source, target, c.Path)
+	case []interface{}:
+		target, ok := c.Target.([]interface{})
+		if !ok {
+			fmt.Fprintf(os.Stderr, "Skipping path %s; replace not yet implemented\n", c.Path)
+			return []OpDefinition{}
+		}
 
-			switch value := value.(type) {
-			case map[interface{}]interface{}:
-				newPath := currentPath + key + "/"
-				opDefs = append(opDefs, compareObjects(value, target[key], newPath)...)
-			}
+		return compareSlices(source, target, c.Path)
+	default:
+		return []OpDefinition{}
+	}
+}
+
+func compareMaps(source, target map[interface{}]interface{}, currentPath string) (opDefs []OpDefinition) {
+	for key, value := range source {
+		key := key.(string)
+		if target[key] == nil {
+			opDefs = append(opDefs, buildOpDefinition(currentPath, key))
+			continue
+		}
+
+		comparator := Comparator{
+			Source: value,
+			Target: target[key],
+			Path:   currentPath + key + "/",
+		}
+		opDefs = append(opDefs, compareObjects(comparator)...)
+	}
+
+	return
+}
+
+func compareSlices(source, target []interface{}, currentPath string) (opDefs []OpDefinition) {
+	sourceKVs := findUniqueKVs(source)
+	targetKVs := findUniqueKVs(target)
+
+	comparators := []Comparator{}
+	handledSources := map[*interface{}]bool{}
+	for kv, sourceEl := range sourceKVs {
+		if !handledSources[sourceEl] && targetKVs[kv] != nil {
+			comparators = append(comparators, Comparator{
+				Source: *sourceEl,
+				Target: *targetKVs[kv],
+				Path:   fmt.Sprintf("%s%s/", currentPath, kv),
+			})
+
+			handledSources[sourceEl] = true
+		}
+	}
+
+	for _, comparator := range comparators {
+		opDefs = append(opDefs, compareObjects(comparator)...)
+	}
+
+	for kv, sourceEl := range sourceKVs {
+		if !handledSources[sourceEl] {
+			opDefs = append(opDefs, buildOpDefinition(currentPath, kv))
+			handledSources[sourceEl] = true
 		}
 	}
 
 	return
+}
+
+func findUniqueKVs(mapArray []interface{}) map[string]*interface{} {
+	kVPresence := map[string][]*interface{}{}
+	for i, el := range mapArray {
+		el := el.(map[interface{}]interface{})
+		for key, value := range el {
+			value, ok := value.(string)
+			if !ok {
+				continue
+			}
+
+			kv := fmt.Sprintf("%s=%s", key.(string), value)
+			kVPresence[kv] = append(kVPresence[kv], &mapArray[i])
+		}
+	}
+
+	uniqueKVs := map[string]*interface{}{}
+	for kv, mapArray := range kVPresence {
+		if len(mapArray) == 1 {
+			uniqueKVs[kv] = mapArray[0]
+		}
+	}
+
+	return uniqueKVs
 }
 
 func buildOpDefinition(location, key string) OpDefinition {
