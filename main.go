@@ -80,17 +80,17 @@ func compareMaps(source, target map[interface{}]interface{}, currentPath string)
 }
 
 func compareSlices(source, target []interface{}, currentPath string) (opDefs []OpDefinition) {
-	sourceKVs := findUniqueKVs(source)
-	targetKVs := findUniqueKVs(target)
+	sourceIDs := findUniqueIDs(source)
+	targetIDs := findUniqueIDs(target)
 
 	comparators := []Comparator{}
 	handledSources := map[*interface{}]bool{}
-	for kv, sourceEl := range sourceKVs {
-		if !handledSources[sourceEl] && targetKVs[kv] != nil {
+	for id, sourceEl := range sourceIDs {
+		if !handledSources[sourceEl] && targetIDs[id] != nil {
 			comparators = append(comparators, Comparator{
 				Source: *sourceEl,
-				Target: *targetKVs[kv],
-				Path:   fmt.Sprintf("%s%s/", currentPath, kv),
+				Target: *targetIDs[id],
+				Path:   fmt.Sprintf("%s%s/", currentPath, id),
 			})
 
 			handledSources[sourceEl] = true
@@ -101,9 +101,9 @@ func compareSlices(source, target []interface{}, currentPath string) (opDefs []O
 		opDefs = append(opDefs, compareObjects(comparator)...)
 	}
 
-	for kv, sourceEl := range sourceKVs {
+	for id, sourceEl := range sourceIDs {
 		if !handledSources[sourceEl] {
-			opDefs = append(opDefs, buildOpDefinition(currentPath, kv))
+			opDefs = append(opDefs, buildOpDefinition(currentPath, id))
 			handledSources[sourceEl] = true
 		}
 	}
@@ -111,29 +111,45 @@ func compareSlices(source, target []interface{}, currentPath string) (opDefs []O
 	return
 }
 
-func findUniqueKVs(mapArray []interface{}) map[string]*interface{} {
-	kVPresence := map[string][]*interface{}{}
+func findUniqueIDs(mapArray []interface{}) map[string]*interface{} {
+	iDPresence := map[string][]*interface{}{}
 	for i, el := range mapArray {
-		el := el.(map[interface{}]interface{})
-		for key, value := range el {
+		for _, id := range getIDsForItem(el) {
+			iDPresence[id] = append(iDPresence[id], &mapArray[i])
+		}
+	}
+
+	uniqueIDs := map[string]*interface{}{}
+	for id, mapArray := range iDPresence {
+		if len(mapArray) == 1 {
+			uniqueIDs[id] = mapArray[0]
+		}
+	}
+
+	return uniqueIDs
+}
+
+func getIDsForItem(item interface{}) []string {
+	switch item := item.(type) {
+	case string:
+		return []string{item}
+	case int:
+		return []string{string(item)}
+	case map[interface{}]interface{}:
+		ids := []string{}
+		for key, value := range item {
 			value, ok := value.(string)
 			if !ok {
 				continue
 			}
 
-			kv := fmt.Sprintf("%s=%s", key.(string), value)
-			kVPresence[kv] = append(kVPresence[kv], &mapArray[i])
+			ids = append(ids, fmt.Sprintf("%s=%s", key.(string), value))
 		}
-	}
 
-	uniqueKVs := map[string]*interface{}{}
-	for kv, mapArray := range kVPresence {
-		if len(mapArray) == 1 {
-			uniqueKVs[kv] = mapArray[0]
-		}
+		return ids
+	default:
+		return []string{}
 	}
-
-	return uniqueKVs
 }
 
 func buildOpDefinition(location, key string) OpDefinition {
