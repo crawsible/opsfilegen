@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
 
 	"gopkg.in/yaml.v2"
@@ -19,34 +20,16 @@ type OpDefinition struct {
 	Value string `yaml:",omitempty"`
 }
 
-var sourceMarkup = []byte(`
----
-consistent_value:
-  nested_consistent_value:
-  - name: "unchanged item"
-    key: "value"
-  - name: "changed item"
-    key: "value"
-  - name: "removed item"
-    key: "other value"
-  nested_removed_value: "value"
-removed_value: "value"
-`)
-
-var targetMarkup = []byte(`
----
-consistent_value:
-  nested_consistent_value:
-  - name: "unchanged item"
-    key: "value"
-  - name: "changed item"
-`)
-
 func main() {
-	c := Comparator{Path: "/"}
+	sourceFilename := os.Args[1]
+	targetFilename := os.Args[2]
 
-	_ = yaml.Unmarshal(sourceMarkup, &c.Source)
-	_ = yaml.Unmarshal(targetMarkup, &c.Target)
+	sourceBytes, _ := ioutil.ReadFile(sourceFilename)
+	targetBytes, _ := ioutil.ReadFile(targetFilename)
+
+	c := Comparator{Path: "/"}
+	_ = yaml.Unmarshal(sourceBytes, &c.Source)
+	_ = yaml.Unmarshal(targetBytes, &c.Target)
 
 	opDefs := compareObjects(c)
 
