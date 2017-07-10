@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v2"
 )
@@ -80,20 +81,62 @@ func compareMaps(source, target map[interface{}]interface{}, currentPath string)
 }
 
 func compareSlices(source, target []interface{}, currentPath string) (opDefs []OpDefinition) {
-	sourceIDs := findUniqueIDs(source)
-	targetIDs := findUniqueIDs(target)
+	sourceIds := findUniqueIds(source)
+	targetIds := findUniqueIds(target)
+
+	nameSourceIds := map[string]int{}
+	for id, sourceIndex := range sourceIds {
+		if strings.HasPrefix(id, "name=") {
+			nameSourceIds[id] = sourceIndex
+		}
+	}
 
 	comparators := []Comparator{}
-	handledSources := map[*interface{}]bool{}
-	for id, sourceEl := range sourceIDs {
-		if !handledSources[sourceEl] && targetIDs[id] != nil {
+	matchedSourceIds := map[int]bool{}
+
+	var targetIndex int
+	var ok bool
+	for id, sourceIndex := range nameSourceIds {
+		targetIndex, ok = targetIds[id]
+		if ok {
 			comparators = append(comparators, Comparator{
-				Source: *sourceEl,
-				Target: *targetIDs[id],
+				Source: source[sourceIndex],
+				Target: target[targetIndex],
 				Path:   fmt.Sprintf("%s%s/", currentPath, id),
 			})
 
-			handledSources[sourceEl] = true
+			matchedSourceIds[sourceIndex] = true
+		}
+	}
+
+	for id, sourceIndex := range sourceIds {
+		if matchedSourceIds[sourceIndex] {
+			continue
+		}
+
+		targetIndex, ok = targetIds[id]
+		if ok {
+			comparators = append(comparators, Comparator{
+				Source: source[sourceIndex],
+				Target: target[targetIndex],
+				Path:   fmt.Sprintf("%s%s/", currentPath, id),
+			})
+
+			matchedSourceIds[sourceIndex] = true
+		}
+	}
+
+	for id, sourceIndex := range nameSourceIds {
+		if !matchedSourceIds[sourceIndex] {
+			opDefs = append(opDefs, buildOpDefinition(currentPath, id))
+			matchedSourceIds[sourceIndex] = true
+		}
+	}
+
+	for id, sourceIndex := range sourceIds {
+		if !matchedSourceIds[sourceIndex] {
+			opDefs = append(opDefs, buildOpDefinition(currentPath, id))
+			matchedSourceIds[sourceIndex] = true
 		}
 	}
 
@@ -101,32 +144,25 @@ func compareSlices(source, target []interface{}, currentPath string) (opDefs []O
 		opDefs = append(opDefs, compareObjects(comparator)...)
 	}
 
-	for id, sourceEl := range sourceIDs {
-		if !handledSources[sourceEl] {
-			opDefs = append(opDefs, buildOpDefinition(currentPath, id))
-			handledSources[sourceEl] = true
-		}
-	}
-
 	return
 }
 
-func findUniqueIDs(mapArray []interface{}) map[string]*interface{} {
-	iDPresence := map[string][]*interface{}{}
-	for i, el := range mapArray {
-		for _, id := range getIDsForItem(el) {
-			iDPresence[id] = append(iDPresence[id], &mapArray[i])
+func findUniqueIds(items []interface{}) map[string]int {
+	idPresence := map[string][]int{}
+	for i, item := range items {
+		for _, id := range getIDsForItem(item) {
+			idPresence[id] = append(idPresence[id], i)
 		}
 	}
 
-	uniqueIDs := map[string]*interface{}{}
-	for id, mapArray := range iDPresence {
-		if len(mapArray) == 1 {
-			uniqueIDs[id] = mapArray[0]
+	uniqueIds := map[string]int{}
+	for id, indices := range idPresence {
+		if len(indices) == 1 {
+			uniqueIds[id] = indices[0]
 		}
 	}
 
-	return uniqueIDs
+	return uniqueIds
 }
 
 func getIDsForItem(item interface{}) []string {
