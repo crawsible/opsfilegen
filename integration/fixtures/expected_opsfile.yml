@@ -1,0 +1,6 @@
+- type: remove
+  path: /update/update_watch_time
+- type: remove
+  path: /instance_groups/name=smoke-tests/jobs/name=smoke_tests/properties/smoke_tests/password
+- type: remove
+  path: /instance_groups/name=consul/jobs/name=consul_agent
