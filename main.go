@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v2"
@@ -21,6 +22,20 @@ type OpDefinition struct {
 	Value string `yaml:",omitempty"`
 }
 
+type OpDefinitions []OpDefinition
+
+func (o OpDefinitions) Len() int {
+	return len(o)
+}
+
+func (o OpDefinitions) Swap(i, j int) {
+	o[i], o[j] = o[j], o[i]
+}
+
+func (o OpDefinitions) Less(i, j int) bool {
+	return o[i].Path < o[j].Path
+}
+
 func main() {
 	sourceFilename := os.Args[1]
 	targetFilename := os.Args[2]
@@ -33,18 +48,19 @@ func main() {
 	_ = yaml.Unmarshal(targetBytes, &c.Target)
 
 	opDefs := compareObjects(c)
+	sort.Sort(opDefs)
 
 	opsfile, _ := yaml.Marshal(opDefs)
 	fmt.Printf("%s", string(opsfile))
 }
 
-func compareObjects(c Comparator) []OpDefinition {
+func compareObjects(c Comparator) OpDefinitions {
 	switch source := c.Source.(type) {
 	case map[interface{}]interface{}:
 		target, ok := c.Target.(map[interface{}]interface{})
 		if !ok {
 			fmt.Fprintf(os.Stderr, "Skipping path %s; replace not yet implemented\n", c.Path)
-			return []OpDefinition{}
+			return OpDefinitions{}
 		}
 
 		return compareMaps(source, target, c.Path)
@@ -52,16 +68,16 @@ func compareObjects(c Comparator) []OpDefinition {
 		target, ok := c.Target.([]interface{})
 		if !ok {
 			fmt.Fprintf(os.Stderr, "Skipping path %s; replace not yet implemented\n", c.Path)
-			return []OpDefinition{}
+			return OpDefinitions{}
 		}
 
 		return compareSlices(source, target, c.Path)
 	default:
-		return []OpDefinition{}
+		return OpDefinitions{}
 	}
 }
 
-func compareMaps(source, target map[interface{}]interface{}, currentPath string) (opDefs []OpDefinition) {
+func compareMaps(source, target map[interface{}]interface{}, currentPath string) (opDefs OpDefinitions) {
 	for key, value := range source {
 		key := key.(string)
 		if target[key] == nil {
@@ -80,7 +96,7 @@ func compareMaps(source, target map[interface{}]interface{}, currentPath string)
 	return
 }
 
-func compareSlices(source, target []interface{}, currentPath string) (opDefs []OpDefinition) {
+func compareSlices(source, target []interface{}, currentPath string) (opDefs OpDefinitions) {
 	sourceIds := findUniqueIds(source)
 	targetIds := findUniqueIds(target)
 

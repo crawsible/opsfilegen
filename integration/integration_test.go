@@ -52,6 +52,6 @@ var _ = Describe("Integration", func() {
 		err = yaml.Unmarshal(actualOutput, &actualOpDefs)
 		Expect(err).NotTo(HaveOccurred())
 
-		Expect(actualOpDefs).To(ConsistOf(expectedOpDefs))
+		Expect(actualOpDefs).To(Equal(expectedOpDefs))
 	})
 })
