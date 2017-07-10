@@ -7,9 +7,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/cppforlife/go-patch/patch"
-	"gopkg.in/yaml.v2"
-
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
@@ -45,13 +42,6 @@ var _ = Describe("Integration", func() {
 		Expect(err).NotTo(HaveOccurred())
 		actualOutput := session.Wait(5 * time.Second).Out.Contents()
 
-		var expectedOpDefs []patch.OpDefinition
-		var actualOpDefs []patch.OpDefinition
-
-		_ = yaml.Unmarshal(expectedOutput, &expectedOpDefs)
-		err = yaml.Unmarshal(actualOutput, &actualOpDefs)
-		Expect(err).NotTo(HaveOccurred())
-
-		Expect(actualOpDefs).To(Equal(expectedOpDefs))
+		Expect(actualOutput).To(MatchYAML(expectedOutput))
 	})
 })
