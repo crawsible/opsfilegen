@@ -2,7 +2,7 @@
 Generates an opsfile from the diff between two bosh manifests.
 
 ### Intentional Limitations
-* Will not parse YAML matrices (arrays that have at least one array as an element). In practice this rarely exists in bosh manifests.
+* Will not parse YAML matrices (arrays that have at least one array as an element). In practice this rarely exists in BOSH manifests, and it's probably fair to call this an antipattern.
 
 ### Temporary Limitations
 * *Extremely* hackday code. A single integration test; one big main.go.

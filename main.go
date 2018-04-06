@@ -44,8 +44,14 @@ func main() {
 	targetBytes, _ := ioutil.ReadFile(targetFilename)
 
 	c := Comparator{Path: "/"}
-	_ = yaml.Unmarshal(sourceBytes, &c.Source)
-	_ = yaml.Unmarshal(targetBytes, &c.Target)
+	err := yaml.Unmarshal(sourceBytes, &c.Source)
+	if err != nil {
+		panic(fmt.Sprintf("unable to unmarshal yaml from `%s`\n", sourceFilename))
+	}
+	err = yaml.Unmarshal(targetBytes, &c.Target)
+	if err != nil {
+		panic(fmt.Sprintf("unable to unmarshal yaml from `%s`\n", targetFilename))
+	}
 
 	opDefs := compareObjects(c)
 	sort.Sort(opDefs)
@@ -181,27 +187,24 @@ func findUniqueIds(items []interface{}) map[string]int {
 	return uniqueIds
 }
 
-func getIDsForItem(item interface{}) []string {
-	switch item := item.(type) {
-	case string:
-		return []string{item}
-	case int:
-		return []string{string(item)}
-	case map[interface{}]interface{}:
-		ids := []string{}
-		for key, value := range item {
-			value, ok := value.(string)
-			if !ok {
-				continue
-			}
+func getIDsForItem(rawItem interface{}) []string {
+	ids := []string{}
 
-			ids = append(ids, fmt.Sprintf("%s=%s", key.(string), value))
+	item, ok := rawItem.(map[interface{}]interface{})
+	if !ok {
+		return ids
+	}
+
+	for key, value := range item {
+		value, ok := value.(string)
+		if !ok {
+			continue
 		}
 
-		return ids
-	default:
-		return []string{}
+		ids = append(ids, fmt.Sprintf("%s=%s", key.(string), value))
 	}
+
+	return ids
 }
 
 func buildOpDefinition(location, key string) OpDefinition {
